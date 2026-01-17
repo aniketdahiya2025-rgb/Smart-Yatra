@@ -9,11 +9,29 @@ import KSimg from "./assets/KS.jpeg";
 import MMimg from "./assets/MM.jpeg";
 import Bimg from "./assets/B.jpeg";
 import RRimg from "./assets/RR.jpeg";
+import { FaSignInAlt, FaSignOutAlt, FaUser } from "react-icons/fa";
+import { auth, db } from "./firebase";
+import {
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  limit,
+  onSnapshot,
+  serverTimestamp,
+} from "firebase/firestore";
 import {
   FaMapMarkerAlt,
   FaUsers,
   FaClock,
   FaRoute,
+  FaMap,
   FaBrain,
   FaBell,
   FaHeadphones,
@@ -27,12 +45,12 @@ import {
   FaShieldAlt,
   FaChevronRight,
   FaChevronDown,
-  FaSignInAlt,
-  FaSignOutAlt,
-  FaUser,
+  FaFilter,
+  FaHeart,
+  FaPizzaSlice,
 } from "react-icons/fa";
-
-const BrajYatra = () => {
+import "./App.css";
+const BrajYatra2 = () => {
   const [activeTab, setActiveTab] = useState("discover");
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [yatraFilters, setYatraFilters] = useState({
@@ -40,9 +58,15 @@ const BrajYatra = () => {
     crowdTolerance: "medium",
     walkingPreference: "moderate",
   });
+  const [userLocation, setUserLocation] = useState(null);
   const [expandedRoute, setExpandedRoute] = useState(null);
-
-  // Mock authentication state (replace with real Firebase in production)
+  // Firebase Authentication
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
   const [user, setUser] = useState(null);
   const [feedbackData, setFeedbackData] = useState({
     place: "",
@@ -51,116 +75,25 @@ const BrajYatra = () => {
   });
   const [recentFeedbacks, setRecentFeedbacks] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
-
-  // Mock Authentication handlers
-  const handleGoogleSignIn = async () => {
-    // Simulate sign in with a mock user
-    const mockUser = {
-      displayName: "Demo User",
-      email: "demo@example.com",
-      photoURL: null,
-      uid: "demo-user-123",
-    };
-    setUser(mockUser);
-  };
-
-  const handleSignOut = async () => {
-    setUser(null);
-    setFeedbackData({ place: "", crowdLevel: "", comment: "" });
-  };
-
-  // Mock Feedback submission
-  const handleSubmitFeedback = async () => {
-    if (!user) {
-      alert("Please sign in to submit feedback");
-      return;
-    }
-
-    if (!feedbackData.place || !feedbackData.crowdLevel) {
-      alert("Please select a place and crowd level");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    // Simulate API call
-    setTimeout(() => {
-      const newFeedback = {
-        id: Date.now().toString(),
-        place: feedbackData.place,
-        crowdLevel: feedbackData.crowdLevel,
-        comment: feedbackData.comment,
-        userName: user.displayName,
-        userEmail: user.email,
-        userId: user.uid,
-        timestamp: new Date(),
-      };
-
-      setRecentFeedbacks([newFeedback, ...recentFeedbacks]);
-      setFeedbackData({ place: "", crowdLevel: "", comment: "" });
-      setSubmitSuccess(true);
-      setIsSubmitting(false);
-
-      setTimeout(() => setSubmitSuccess(false), 3000);
-    }, 1000);
-  };
-
-  // Format timestamp
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return "Just now";
-
-    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins} min ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24)
-      return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-
-    return date.toLocaleDateString();
-  };
-
-  // Load mock feedbacks on mount
+  // Fetch recent feedbacks from Firestore
   useEffect(() => {
-    const mockFeedbacks = [
-      {
-        id: "1",
-        place: "Shree Krishna Janmabhoomi",
-        crowdLevel: "medium",
-        comment:
-          "Visited in the evening, crowd was manageable. Beautiful darshan!",
-        userName: "Rajesh Kumar",
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-      {
-        id: "2",
-        place: "Banke Bihari Temple",
-        crowdLevel: "high",
-        comment:
-          "Very crowded during evening aarti. Recommend visiting early morning.",
-        userName: "Priya Sharma",
-        timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-      },
-      {
-        id: "3",
-        place: "Kusum Sarovar",
-        crowdLevel: "low",
-        comment: "Peaceful and serene. Perfect for meditation.",
-        userName: "Amit Patel",
-        timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-      },
-    ];
-    setRecentFeedbacks(mockFeedbacks);
-  }, []);
+    const q = query(
+      collection(db, "feedbacks"),
+      orderBy("timestamp", "desc"),
+      limit(10),
+    );
 
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const feedbacks = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRecentFeedbacks(feedbacks);
+    });
+
+    return () => unsubscribe();
+  }, []);
+  // Mock data for places
   const places = [
     {
       id: 1,
@@ -170,18 +103,17 @@ const BrajYatra = () => {
       currentCrowd: 85,
       peakHours: "6-9 AM, 5-8 PM",
       history:
-        "Mathura is the holy birthplace of Lord Shri Krishna. Long ago, a cruel king Kansa ruled Mathura. A prophecy said that Devaki's eighth son would kill him, so Kansa put Devaki and her husband Vasudeva in prison. At midnight, Lord Krishna was born in the prison cell. Miracles happened—the prison doors opened and Vasudeva's chains broke. He carried baby Krishna across the Yamuna River to Gokul and left him with Yashoda. Years later, Krishna returned to Mathura and killed Kansa, ending his cruelty. Today, the Shri Krishna Janmabhoomi Mandir stands at the exact place of Krishna's birth and is a symbol of faith and victory of good over evil.",
+        "Mathura is the holy birthplace of Lord Shri Krishna. Long ago, a cruel king Kansa ruled Mathura. A prophecy said that Devaki’s eighth son would kill him, so Kansa put Devaki and her husband Vasudeva in prison.At midnight, Lord Krishna was born in the prison cell. Miracles happened—the prison doors opened and Vasudeva’s chains broke. He carried baby Krishna across the Yamuna River to Gokul and left him with Yashoda.Years later, Krishna returned to Mathura and killed Kansa, ending his cruelty.Today, the Shri Krishna Janmabhoomi Mandir stands at the exact place of Krishna’s birth and is a symbol of faith and victory of good over evil.",
       significance:
         "One of the most revered temples in Vrindavan, known for its unique deity that stands in a tribhanga pose.",
       whyVisit:
         "Experience the divine darshan and witness the unique ritual where the deity's eyes are covered periodically.",
-      image: "🙏",
+      image: "🙏  ",
       imageUrl: Skjbimg,
       lat: 27.5799,
       lng: 77.6948,
       distance: 0,
       bestTime: "7-8 AM or 4-5 PM",
-      rating: 4.8,
       audioStory: "The deity was installed by Swami Haridas in 1864...",
     },
     {
@@ -192,7 +124,7 @@ const BrajYatra = () => {
       currentCrowd: 55,
       peakHours: "7-9 PM",
       history:
-        "🌸 Story of Banke Bihari Mandir. In Vrindavan, the land of divine love, Lord Krishna appeared as Banke Bihari—the charming, playful child of Vrindavan. The idol of Banke Bihari was not carved by human hands; it appeared on its own from the devotion of a great saint, Swami Haridas. Swami Haridas was a deep devotee of Krishna. One day, while singing divine bhajans in Nidhivan, Krishna became so pleased that he appeared in person along with Radha. The saint requested Krishna to stay for the devotees, and Krishna took the beautiful form of Banke Bihari.",
+        "🌸 Story of Banke Bihari MandirIn Vrindavan, the land of divine love, Lord Krishna appeared as Banke Bihari—the charming, playful child of Vrindavan. The idol of Banke Bihari was not carved by human hands; it appeared on its own from the devotion of a great saint, Swami Haridas.Swami Haridas was a deep devotee of Krishna. One day, while singing divine bhajans in Nidhivan, Krishna became so pleased that he appeared in person along with Radha. The saint requested Krishna to stay for the devotees, and Krishna took the beautiful form of Banke Bihari.The idol is special—the eyes are half-closed, full of compassion and playfulness. It is believed that Banke Bihari’s glance is so powerful that the curtain is opened and closed again and again, so devotees are not overwhelmed by divine energy.Even today, Banke Bihari is not worshipped like a god but loved like a child—without bells, without aarti, only with pure love and devotion. The temple reminds us that God is not far away; He lives where there is love.",
       significance:
         "Showcases the divine love of Radha Krishna and Sita Ram through intricate carvings.",
       whyVisit:
@@ -215,7 +147,7 @@ const BrajYatra = () => {
       currentCrowd: 20,
       peakHours: "10 AM-12 PM",
       history:
-        "🌿 Story of Govardhan Hill. Govardhan Hill is a sacred place near Vrindavan, loved deeply by Lord Krishna. The people of Braj used to worship Lord Indra for rain. Krishna taught them that they should respect nature instead of fearing it. When the villagers stopped Indra worship, Indra became angry and sent heavy rains and storms to destroy Braj. To protect everyone, little Krishna lifted Govardhan Hill on his small finger, giving shelter to people, animals, and birds for seven days and nights.",
+        "🌿 Story of Govardhan HillGovardhan Hill is a sacred place near Vrindavan, loved deeply by Lord Krishna. The people of Braj used to worship Lord Indra for rain. Krishna taught them that they should respect nature instead of fearing it.When the villagers stopped Indra worship, Indra became angry and sent heavy rains and storms to destroy Braj. To protect everyone, little Krishna lifted Govardhan Hill on his small finger, giving shelter to people, animals, and birds for seven days and nights.Seeing this miracle, Indra realized his mistake and bowed before Krishna. Krishna then gently placed Govardhan Hill back and taught the world the lesson of humility, unity, and respect for nature.Even today, devotees perform Govardhan Parikrama and believe the hill is a living form of Krishna’s love and protection.",
       significance:
         "Sacred grove believed to be locked at night as Krishna still visits.",
       whyVisit:
@@ -238,7 +170,7 @@ const BrajYatra = () => {
       currentCrowd: 15,
       peakHours: "6-8 AM",
       history:
-        "🌸 Story of Radha Rani Temple, Barsana. Barsana is the sacred village of Radha Rani, the eternal beloved of Lord Krishna. The Radha Rani Temple stands on Brahma Parvat hill, shining like a crown over Barsana. It is believed that Radha Rani appeared here, and this place became the center of divine love and devotion. Krishna's love finds its true meaning through Radha, who represents pure devotion and selfless love.",
+        "🌸 Story of Radha Rani Temple, BarsanaBarsana is the sacred village of Radha Rani, the eternal beloved of Lord Krishna. The Radha Rani Temple stands on Brahma Parvat hill, shining like a crown over Barsana.It is believed that Radha Rani appeared here, and this place became the center of divine love and devotion. Krishna’s love finds its true meaning through Radha, who represents pure devotion and selfless love.The temple is famous for Lathmar Holi, where devotion turns into joyful celebration, remembering the playful love of Radha and Krishna. Devotees climb the steps of the hill with faith, believing that Radha Rani blesses them with love, peace, and strength.",
       significance:
         "Unique temple where Radha is the primary deity with Krishna present symbolically.",
       whyVisit:
@@ -260,7 +192,7 @@ const BrajYatra = () => {
       currentCrowd: 25,
       peakHours: "5-7 AM",
       history:
-        "🌸 Story of Madan Mohan Temple. The Madan Mohan Temple is one of the oldest and most sacred temples in Vrindavan. It is dedicated to Lord Krishna in the form of Madan Mohan, the one who even attracts Cupid (Madan) himself. Long ago, a great devotee named Kapoor Ram Das discovered the beautiful idol of Madan Mohan near the Yamuna River.",
+        "🌸 Story of Madan Mohan TempleThe Madan Mohan Temple is one of the oldest and most sacred temples in Vrindavan. It is dedicated to Lord Krishna in the form of Madan Mohan, the one who even attracts Cupid (Madan) himself.Long ago, a great devotee named Kapoor Ram Das discovered the beautiful idol of Madan Mohan near the Yamuna River. With deep devotion, he worshipped the deity. Later, a rich devotee Krishnadas Kapoor built the grand temple on a high hill overlooking Vrindavan.It is believed that Chaitanya Mahaprabhu also visited this place and blessed it. Devotees say that Madan Mohan helps people understand true devotion and control their wandering mind.",
       significance: "One of the most sacred bathing ghats in Vrindavan.",
       whyVisit: "Serene atmosphere, morning aarti, peaceful Yamuna views.",
       image: "🌊",
@@ -281,7 +213,7 @@ const BrajYatra = () => {
       currentCrowd: 18,
       peakHours: "7-9 AM",
       history:
-        "🌸 Story of Radha Vallabh Lal. The Radha Vallabh Temple in Vrindavan is dedicated to Radha Vallabh Lal, where Radha Rani is given the highest place. Here, Krishna is worshipped not alone, but as Radha's beloved. The temple follows a unique tradition—there is no idol of Radha Rani, but a crown is placed beside Krishna, showing that Radha resides in his heart.",
+        "🌸 Story of Radha Vallabh Lal. The Radha Vallabh Temple in Vrindavan is dedicated to Radha Vallabh Lal, where Radha Rani is given the highest place. Here, Krishna is worshipped not alone, but as Radha’s beloved.The temple follows a unique tradition—there is no idol of Radha Rani, but a crown is placed beside Krishna, showing that Radha resides in his heart. This teaches that true devotion means complete surrender and love, just like Radha’s love for Krishna.Founded by Hith Harivansh Mahaprabhu, the temple focuses on pure bhakti, free from show and rituals. Devotees come here to experience deep emotional devotion (ras bhakti).",
       significance:
         "Contains the samadhi of Rupa Goswami and where Prabhupada lived.",
       whyVisit:
@@ -296,6 +228,7 @@ const BrajYatra = () => {
       audioStory:
         "Srila Prabhupada spent time here before spreading Krishna consciousness...",
     },
+
     {
       id: 7,
       name: "Kusum Sarovar",
@@ -304,11 +237,12 @@ const BrajYatra = () => {
       currentCrowd: 18,
       peakHours: "7-9 AM",
       history:
-        "Story of Kusum Sarovar. Kusum Sarovar is a peaceful and beautiful pond near Govardhan Hill, connected with the loving pastimes of Radha and Krishna. It is believed that Radha Rani and the gopis came here to collect flowers (kusum) for Krishna. Krishna often met Radha here, teasing her lovingly and playing the flute, filling the place with divine romance and joy.",
-      significance: "Sacred pond where Radha collected flowers for Krishna.",
+        "Story of Kusum Sarovar Kusum Sarovar is a peaceful and beautiful pond near Govardhan Hill, connected with the loving pastimes of Radha and Krishna. It is believed that Radha Rani and the gopis came here to collect flowers (kusum) for Krishna. Krishna often met Radha here, teasing her lovingly and playing the flute, filling the place with divine romance and joy. The calm water and stone steps still seem to reflect those eternal moments. The ghats of Kusum Sarovar were later beautifully built by devoted kings, making it a place of meditation, peace, and devotion. Devotees believe that sitting here brings inner calm and spiritual love.",
+      significance:
+        "Contains the samadhi of Rupa Goswami and where Prabhupada lived.",
       whyVisit:
-        "Stunning architecture, peaceful environment, beautiful sunset views.",
-      image: "💧",
+        "Deep spiritual heritage, peaceful environment, important for ISKCON devotees.",
+      image: "🛕",
       imageUrl: KSimg,
       lat: 27.5789,
       lng: 77.6967,
@@ -316,22 +250,22 @@ const BrajYatra = () => {
       bestTime: "7-8 AM",
       rating: 4.6,
       audioStory:
-        "The ghats were built by devoted kings in memory of divine love...",
+        "Srila Prabhupada spent time here before spreading Krishna consciousness...",
     },
     {
       id: 8,
-      name: "Maan Mandir",
+      name: "⁠Maan Mandir",
       category: "Hidden Gem",
       crowdLevel: "low",
       currentCrowd: 18,
       peakHours: "7-9 AM",
       history:
-        "Story of Maan Mandir. Maan Mandir is a sacred place in Barsana, closely connected with Radha Rani's divine love and playful anger (maan). It is believed that when Radha Rani felt lovingly upset with Lord Krishna, she came to this peaceful place. To please Radha, Krishna tried many ways—playing the flute, sending messages through sakhi friends, and finally bowing with complete surrender.",
+        "Story of Maan Mandir Maan Mandir is a sacred place in Barsana, closely connected with Radha Rani’s divine love and playful anger (maan). It is believed that when Radha Rani felt lovingly upset with Lord Krishna, she came to this peaceful place. To please Radha, Krishna tried many ways—playing the flute, sending messages through sakhi friends, and finally bowing with complete surrender. Radha’s maan melted, and divine love shined brighter than ever. This place teaches that true love is not pride, but humility and surrender. Even God bows before pure devotion.",
       significance:
-        "Place where Radha's maan (loving anger) was appeased by Krishna.",
+        "Contains the samadhi of Rupa Goswami and where Prabhupada lived.",
       whyVisit:
-        "Teaches the essence of divine love through surrender and humility.",
-      image: "💝",
+        "Deep spiritual heritage, peaceful environment, important for ISKCON devotees.",
+      image: "🛕",
       imageUrl: MMimg,
       lat: 27.5789,
       lng: 77.6967,
@@ -339,7 +273,7 @@ const BrajYatra = () => {
       bestTime: "7-8 AM",
       rating: 4.6,
       audioStory:
-        "This place reminds us that true love is humility and surrender...",
+        "Srila Prabhupada spent time here before spreading Krishna consciousness...",
     },
     {
       id: 9,
@@ -349,12 +283,12 @@ const BrajYatra = () => {
       currentCrowd: 18,
       peakHours: "7-9 AM",
       history:
-        "🌿 Story of Bhandir Van. Bhandir Van is a sacred forest near Vrindavan, deeply connected with the divine pastimes of Radha and Krishna. It is believed that Radha and Krishna were married here in a divine ceremony, with Lord Brahma himself as the priest. This peaceful forest was once filled with Krishna's playful leelas with the gopis and cowherd friends.",
+        "🌿 Story of Bhandir VanBhandir Van is a sacred forest near Vrindavan, deeply connected with the divine pastimes of Radha and Krishna. It is believed that Radha and Krishna were married here in a divine ceremony, with Lord Brahma himself as the priest.This peaceful forest was once filled with Krishna’s playful leelas with the gopis and cowherd friends. In Bhandir Van, Krishna often played the flute, danced, and spread joy everywhere The place is also linked with the story of Bhandirasura, a demon whom Krishna defeated, after which the forest became pure and holy. The ancient Bhandir Vata (banyan tree) stands as a witness to these divine events.",
       significance:
-        "Sacred forest where divine marriage of Radha Krishna took place.",
+        "Contains the samadhi of Rupa Goswami and where Prabhupada lived.",
       whyVisit:
-        "Ancient banyan tree, peaceful meditation spot, divine vibrations.",
-      image: "🌲",
+        "Deep spiritual heritage, peaceful environment, important for ISKCON devotees.",
+      image: "🛕",
       imageUrl: Bimg,
       lat: 27.5789,
       lng: 77.6967,
@@ -362,21 +296,22 @@ const BrajYatra = () => {
       bestTime: "7-8 AM",
       rating: 4.6,
       audioStory:
-        "The ancient Bhandir Vata stands as witness to divine events...",
+        "Srila Prabhupada spent time here before spreading Krishna consciousness...",
     },
     {
       id: 10,
-      name: "Raman Reti",
+      name: " ⁠Raman Reti",
       category: "Hidden Gem",
       crowdLevel: "low",
       currentCrowd: 18,
       peakHours: "7-9 AM",
       history:
-        "🌼 Story of Raman Reti. Raman Reti is a sacred sandy land in Vrindavan, where Lord Krishna spent his childhood with his friends. It is believed that little Krishna played, ran, and rested on this soft sand, leaving behind divine vibrations. Krishna enjoyed grazing cows here, playing games, and sharing laughter with the gopas.",
-      significance: "Sacred sand touched by Krishna's feet during childhood.",
+        "🌼 Story of Raman RetiRaman Reti is a sacred sandy land in Vrindavan, where Lord Krishna spent his childhood with his friends. It is believed that little Krishna played, ran, and rested on this soft sand, leaving behind divine vibrations.Krishna enjoyed grazing cows here, playing games, and sharing laughter with the gopas. The golden sand of Raman Reti is considered very pure and holy, as it carries the touch of Krishna’s feet.Saints and devotees come to Raman Reti to meditate and chant, feeling deep peace and devotion. This place reminds everyone of Krishna’s simple, joyful childhood and teaches that true happiness lies in innocence and love.",
+      significance:
+        "Contains the samadhi of Rupa Goswami and where Prabhupada lived.",
       whyVisit:
-        "Pure golden sand, meditation centers, simple joyful atmosphere.",
-      image: "🏖️",
+        "Deep spiritual heritage, peaceful environment, important for ISKCON devotees.",
+      image: "🛕",
       imageUrl: RRimg,
       lat: 27.5789,
       lng: 77.6967,
@@ -384,10 +319,11 @@ const BrajYatra = () => {
       bestTime: "7-8 AM",
       rating: 4.6,
       audioStory:
-        "This place reminds us that true happiness lies in innocence and love...",
+        "Srila Prabhupada spent time here before spreading Krishna consciousness...",
     },
   ];
 
+  // Mock yatra routes
   const yatraRoutes = [
     {
       id: 1,
@@ -430,7 +366,6 @@ const BrajYatra = () => {
       walkingTime: "2 hours walk + 1 hour exploration",
     },
   ];
-
   const getCrowdColor = (level) => {
     switch (level) {
       case "low":
@@ -472,6 +407,7 @@ const BrajYatra = () => {
       className="bg-white rounded-lg shadow-md hover:shadow-lg transition cursor-pointer overflow-hidden"
       onClick={() => setSelectedPlace(place)}
     >
+      {/* Image Section */}
       <div className="relative h-48 w-full bg-gradient-to-br from-orange-100 to-pink-100">
         {place.imageUrl ? (
           <img
@@ -495,6 +431,7 @@ const BrajYatra = () => {
         </span>
       </div>
 
+      {/* Content Section */}
       <div className="p-4">
         <h3 className="font-bold text-lg text-gray-800 mb-3">{place.name}</h3>
         <div className="flex items-center justify-between mb-3">
@@ -521,7 +458,7 @@ const BrajYatra = () => {
 
   const renderDiscoverTab = () => (
     <div className="space-y-6">
-      <div className="bg-[#004777] text-white p-6 rounded-lg">
+      <div className="bg-gradient-to-r from-orange-500 to-pink-500 text-white p-6 rounded-lg">
         <h2 className="text-2xl font-bold mb-2">Discover Sacred Braj</h2>
         <p className="text-orange-50">
           Explore beyond the famous temples. Find hidden spiritual gems.
@@ -800,7 +737,7 @@ const BrajYatra = () => {
           <div>
             <h3 className="font-bold text-red-800 mb-1">High Crowd Alert</h3>
             <p className="text-sm text-red-700">
-              Shree Krishna Janmabhoomi is experiencing high crowd levels (85%).
+              Banke Bihari Temple is experiencing high crowd levels (85%).
               Consider visiting during 2-4 PM or explore alternative temples.
             </p>
           </div>
@@ -890,7 +827,7 @@ const BrajYatra = () => {
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
               Today's Crowd Prediction
             </h4>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {["6-9 AM", "9-12 PM", "12-3 PM", "3-6 PM", "6-9 PM"].map(
                 (time, idx) => {
                   const levels = ["high", "medium", "low", "low", "high"];
@@ -1094,15 +1031,6 @@ const BrajYatra = () => {
           <h3 className="font-bold text-gray-800 mb-4">
             Rate Current Crowd Level
           </h3>
-
-          {submitSuccess && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-800 text-sm font-semibold flex items-center gap-2">
-                <span>✓</span> Thank you! Your feedback helps the community.
-              </p>
-            </div>
-          )}
-
           <div className="space-y-4">
             <select
               value={feedbackData.place}
@@ -1110,7 +1038,6 @@ const BrajYatra = () => {
                 setFeedbackData({ ...feedbackData, place: e.target.value })
               }
               className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              disabled={isSubmitting}
             >
               <option value="">Select a place</option>
               {places.map((p) => (
@@ -1131,12 +1058,11 @@ const BrajYatra = () => {
                     onClick={() =>
                       setFeedbackData({ ...feedbackData, crowdLevel: level })
                     }
-                    disabled={isSubmitting}
                     className={`py-2 px-4 rounded-lg font-semibold text-sm transition capitalize ${
                       feedbackData.crowdLevel === level
                         ? "bg-orange-500 text-white"
                         : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                    } ${isSubmitting ? "opacity-50 cursor-not-allowed" : ""}`}
+                    }`}
                   >
                     {level}
                   </button>
@@ -1152,16 +1078,13 @@ const BrajYatra = () => {
               className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               rows="3"
               placeholder="Share your experience (optional)"
-              disabled={isSubmitting}
             ></textarea>
 
             <button
               onClick={handleSubmitFeedback}
-              disabled={
-                isSubmitting || !feedbackData.place || !feedbackData.crowdLevel
-              }
+              disabled={isSubmitting}
               className={`w-full py-3 rounded-lg font-semibold transition ${
-                isSubmitting || !feedbackData.place || !feedbackData.crowdLevel
+                isSubmitting
                   ? "bg-gray-400 cursor-not-allowed"
                   : "bg-orange-500 hover:bg-orange-600"
               } text-white`}
@@ -1349,7 +1272,7 @@ const BrajYatra = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#FF5400] text-white p-6 sticky top-0 z-10 shadow-lg">
+      <header className="bg-gradient-to-r from-yellow-600 to-pink-600 text-white p-6 sticky top-0 z-10 shadow-lg">
         <h1 className="text-3xl font-bold mb-1">ॐ Smart Yatra</h1>
         <p className="text-orange-100 text-sm">
           Smart Spiritual Discovery Platform
@@ -1398,4 +1321,4 @@ const BrajYatra = () => {
   );
 };
 
-export default BrajYatra;
+export default BrajYatra2;
